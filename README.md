@@ -1,7 +1,4 @@
 # manuel-cv-2025
-CV e progetti di Digital Humanities – Manuel Trombetta
-# Manuel Trombetta
-
 Questa repository raccoglie alcuni dei progetti accademici e personali che ho realizzato durante il mio percorso di studi all’Università L'Orientale di Napoli.
 
 ## 👨‍💻 Chi sono
