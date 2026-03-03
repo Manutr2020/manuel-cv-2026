@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Homepage</title>
+</head>
+<body>
+
+<header>   
+    <div class="topnav_bar">
+        <div class="container">
+            <ul>
+                <li><a href="ui.html">Home</a></li>
+                <li><a href="about.html">About the website</a></li>
+            </ul>
+        </div>
+    </div>
+</header> 
+    
+   
+
+<section>
+    <div class="container">
+        <div class="main-content">
+            <h1 class="main-heading text-xl">
+                Welcome to our app :)
+            </h1>
+            <p>
+                This page is a search 
+                engine for musicals! Try search here:
+            </p>
+            <form action="{{ url_for('search') }}" method="get">
+                <button type="submit">
+                        To search
+                </button>  
+            </form>
+        </div>
+    </div>
+</section>
+
+
+
+
+{% include "footer.html" %}
+    
+</body>
+</html>

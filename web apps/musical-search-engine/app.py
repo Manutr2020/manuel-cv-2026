@@ -1,0 +1,108 @@
+from flask import Flask, redirect, render_template, request
+from data_loader import Musical, load_documents
+from visualisations import years_bar # type: ignore
+from visualisations import venue_pie_topn # type: ignore
+
+import threading
+
+app = Flask(__name__)
+
+from algorithms.boolean import BooleanSearchEngine
+from algorithms.semantic import SemanticSearchEngine
+from algorithms.tfidf import TfIdfSearchEngine
+
+documents = load_documents()
+boolean_engine = BooleanSearchEngine(documents)
+semantic_engine: SemanticSearchEngine[Musical] | None = None
+tf_idf_engine = TfIdfSearchEngine(documents)
+
+# Thread safety my beloved :3
+semantic_engine_lock = threading.Lock()
+
+def load_semantic_engine():
+    global semantic_engine
+    print("Downloading dataset, this will take a while")
+    ft_model = SemanticSearchEngine.install_embeddings()
+    print("Loading dataset")
+    se = SemanticSearchEngine(ft_model, documents)
+    print("Dataset loaded")
+
+    # Avoid holding the lock for too long
+    with semantic_engine_lock:
+        semantic_engine = se
+
+semantic_load_thread = threading.Thread(target=load_semantic_engine)
+
+@app.route("/")
+def home():
+    return redirect("/search")
+
+@app.route("/search")
+def search():
+    with semantic_engine_lock:
+        if not semantic_engine and not semantic_load_thread.is_alive():
+            semantic_load_thread.start()
+        return render_template("search.html", semantic_engine_loaded=semantic_engine is not None)
+
+@app.route("/semantic-engine-status")
+def semantic_engine_status():
+    with semantic_engine_lock:
+        return { "semantic-engine-loaded": semantic_engine is not None }
+
+@app.route("/results")
+def results():
+    query = request.args.get("query", "")
+    method = request.args.get("method", "boolean")
+
+    MAX_RESULTS = 20 # Limit the number of results to display
+
+    if method == "boolean":
+        hits = boolean_engine.search(query)
+    elif method == "semantic":
+        with semantic_engine_lock:
+            if semantic_engine is None:
+                return "Semantic search engine has not yet been loaded", 500
+            hits = semantic_engine.search(query)
+    elif method == "tf-idf":
+        hits = tf_idf_engine.search(query)
+    else:
+        hits = []
+
+
+
+    # for visualisations
+    # extract years
+    years = [int(hit.year_released[:4]) for hit in hits if hit.year_released[:4]]
+    # generate plot by referencing visualisations.py
+    plot_file = years_bar(years) if years else None
+
+    venues = [hit.venue_type for hit in hits if hit.venue_type]
+    pie_plot = venue_pie_topn(venues) if venues else None
+
+    total_hits = len(hits)
+    #hits = hits[:MAX_RESULTS]  # Limit results to MAX_RESULTS
+
+    # pagination
+    page = request.args.get("page", 1, type=int)
+    per_page = 20
+    total_pages = max(1, (total_hits + per_page - 1) // per_page)
+
+    # Pagination slice
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_hits = hits[start:end]
+
+    return render_template("results.html", query=query, method=method,
+                           plot_file=plot_file,
+                           pie_plot=pie_plot, results=page_hits,
+                           total_hits=total_hits, page=page,
+                           total_pages=total_pages, per_page=per_page)
+
+@app.route("/results/<index>")
+def musical(index: str):
+    return render_template("musical.html", musical=documents[int(index)])
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=True)
+
+    #gghgfgffgh
