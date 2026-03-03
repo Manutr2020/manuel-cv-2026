@@ -1,0 +1,165 @@
+---
+title: "Week 2-3: home assignment"
+author: "Manuel Trombetta"
+date: "2026-01-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(error = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(effsize)
+library(car)
+library(broom)
+
+```
+
+```{r}
+# load data:
+nettle <- read_csv("https://osf.io/download/ptq7u")
+head(nettle)
+```
+## Task 1
+
+In this section we will look at "Langs" distribution by plotting it.
+
+```{r}
+nettle %>%
+  ggplot(aes(Langs)) +
+  geom_density(color="blue", fill = "lightblue") 
+```
+By looking at the plot, we see that "Langs" has a few very high values and many small ones. To avoid giving too much weight to a small number of observations, we apply a log transformation, which compresses the data and makes the distribution more symmetric.
+
+```{r}
+nettle <- nettle %>%
+  mutate(Log_langs = log10(Langs))
+
+# let's check
+head(nettle)
+```
+
+## Task 2
+
+Now, we are interested in whether linguistic diversity within a country depends on population size, geographic area, and climatic conditions. For this reason, Mean Growing Season is not treated as a continuous variable, since we are not interested in small linear variations in the number of growing days, but rather in differences between broader climatic regimes. By grouping Mean Growing Season into categories, we avoid assuming a linear effect and focus on comparing countries with substantially different environmental conditions.
+
+```{r}
+
+nettle <-
+  mutate(nettle, MGS_cat = factor(ifelse(MGS < 6, 'non-fertile', 'fertile')))
+
+# explore the data
+head(nettle)
+```
+
+Now it is time to create the multiple linear regression model. Then, we plot residuals against fitted values as a diagnostic check of the linear model.
+
+```{r}
+nettle_lm <- lm(Log_langs ~ Population + Area + MGS_cat, data=nettle)
+summary(nettle_lm)
+
+# plot residuals vs fitted values
+plot(
+  fitted(nettle_lm),
+  residuals(nettle_lm),
+  col = "steelblue",
+  pch = 19,  # pch specifies the point symbol used in the plot (solid circles)
+  xlab = "Fitted values",
+  ylab = "Residuals",
+  main = "Residuals vs Fitted"
+)
+abline(h = 0, col = "red")
+
+
+```
+We fitted a linear regression model with log-transformed linguistic diversity (Log_langs) as the response variable and population size, geographic area, and mean growing season category as predictors. The model explains a moderate proportion of the variance (R² = 0.28, adjusted R² = 0.25). Population (β = 0.24) and area (β = 0.27) show a positive association with linguistic diversity, while countries classified as non-fertile display lower linguistic diversity compared to fertile ones (β = −0.32).
+
+
+
+
+## Task 3
+
+Now it is time to check whether the assumptions of the model are satisfied.
+The assumptions are:
+
+- The relationship between the variables is/seems linear
+- the datapoints are independed of one another
+- The variance of the residuals is roughly constant 
+- The residuals are roughly normally distributed
+
+As regards to the first one, linearity was assessed by inspecting the residuals versus fitted values plot. The absence of systematic patterns suggests that the relationship between predictors and response is reasonably linear.
+
+Independence of observations is assumed, as each data point represents a different country.
+In addition, multicollinearity among predictors was assessed and does not appear to be problematic, suggesting that the estimated coefficients are stable and interpretable.
+
+```{r}
+# vif to undestand if there is collinearity among data:
+vif(nettle_lm)
+```
+Values below 2 mean that there is no collinearity among data. If the value had been around 10, it would have been a problem.
+
+
+as regards to the third point, homoscedasticity was assessed by inspecting the residuals versus fitted values plot. The spread of the residuals appears roughly constant across fitted values, suggesting no strong evidence of heteroscedasticity.
+
+
+Residual normality was assessed visually using a histogram of the residuals, which suggests that the residuals are approximately normally distributed.
+```{r}
+hist(
+  residuals(nettle_lm),
+  col = "lightblue",
+  border = "blue",
+  main = "Histogram of residuals",
+  xlab = "Residuals"
+)
+```
+
+## Task 4
+
+Next step is to draw a plot with the confidence intervals.
+
+The first thing to do is to standardize 'Log_langs' and 'Area' variables. It is necessary because the variables are on different scales, they are standardized using scale(), which centers each variable to mean 0 and rescales it to unit variance, making coefficients and confidence intervals comparable.
+
+```{r}
+nettle_2 <- nettle %>%
+  mutate(Log_langs = scale(Log_langs),
+         Area = scale(Area))
+
+head(nettle)
+head(nettle_2)
+```
+
+Now we have to recreate the linear model used earlier with new standardized variables
+
+```{r}
+nettle_lm2 <- lm(Log_langs ~ Population + Area + MGS_cat, data=nettle_2)
+summary(nettle_lm2)
+```
+After that, we tidy the coefficient summary and add the lower and upper limits of the 95% confidence intervals.
+
+```{r}
+mycoefs <- tidy(nettle_lm2, conf.int = TRUE)
+head(mycoefs)
+
+```
+Next, we plot the model coefficients together with their 95% confidence intervals.
+
+```{r}
+mycoefs %>%
+  ggplot(aes(x = term, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low,
+                    ymax = conf.high),
+                width = 0.2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  coord_flip()
+```
+
+The coefficient plot shows the estimated effects of the predictors along with their 95% confidence intervals. Population and Area have confidence intervals that do not cross zero, indicating a positive and statistically meaningful association with linguistic diversity. The category non-fertile in MGS_cat shows a negative effect compared to the fertile reference category, with its confidence interval also not crossing zero. The intercept is less informative and its confidence interval crosses zero, which is not central to the interpretation of the model.
+
+

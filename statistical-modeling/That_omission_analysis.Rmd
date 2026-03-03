@@ -1,0 +1,265 @@
+---
+title: "That-omission - a variationist sociolinguistic analysis"
+author: "Manuel Trombetta"
+date: "2026-02-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(error = FALSE)
+```
+
+## Introduction
+
+**That-omission** in English complement clauses refers to the alternation between an overt complementizer (that) and its absence, as in I think that she is right versus I think she is right. This variable construction has attracted considerable attention in variationist sociolinguistics because it represents a case where speakers can choose between two grammatically acceptable forms. Studying this alternation allows researchers to investigate how linguistic structure, discourse patterns, and social factors interact in shaping language use.
+
+Tagliamonte (2012) examines this phenomenon within the framework of variationist sociolinguistics, aiming to identify the factors that condition the omission of that. Her analysis distinguishes between **language-internal factors**, such as the verb in the matrix clause, subject type, tense, and structural complexity, and **language-external factors**, including age, occupation, and other social variables. Using regression analysis, she shows that omission is not random but systematically constrained by grammar and usage patterns.
+
+Her findings indicate that *linguistic factors play the dominant role*. In particular, verbs such as think strongly favor omission, especially in frequent expressions like I think, which may function as discourse markers. Structural simplicity also promotes omission: it is more likely when the clause is syntactically straightforward and when no material intervenes between the matrix verb and the complement clause. Conversely, increased structural complexity encourages the use of overt that. Social factors, by contrast, exert only a limited influence, with variation largely driven by grammatical and discourse-related constraints.
+
+The present study replicates part of Tagliamonte’s analysis using mixed-effects logistic regression in R, with the goal of assessing how linguistic and social factors affect the probability of that-omission while accounting for variation between individual speakers.
+
+## Tools and methods
+
+Tagliamonte conducts her analysis using **Goldvarb**, a variationist tool that applies logistic regression to estimate the probability of a linguistic variant and reports results as factor weights (values between 0 and 1) indicating whether a factor favors or disfavors the variant. In this study, the analysis is replicated in R using a **mixed-effects logistic regression model**. While both approaches model the probability of that-omission, the R model estimates effects in log-odds (which can be converted into probabilities) and, crucially, allows the inclusion of random effects to account for variation between individual speakers. This makes the mixed-effects approach more flexible and statistically robust, while still addressing the same variationist research question.
+
+## Research question
+
+*How is that-omission conditioned by linguistic factors and social factors, while accounting for differences between individual speakers?*
+
+## Null Hypothesis
+
+- **H0₁** (linguistic): Language-internal predictors do not affect the probability of that-omission 
+- **H0₂** (social): Social predictors do not affect the probability of that-omission 
+- **H0₃** (speaker variation): There is no between-speaker variation in baseline rates of that-omission 
+
+
+### Load packages:
+```{r}
+library(readxl)
+library(performance)
+library(dplyr)
+library(lme4)
+library(broom.mixed) # for glmer
+library(ggplot2)
+library(ggeffects)
+library(MuMIn)
+library(pROC) # for C-statistic/AUC
+```
+
+### Load data:
+```{r}
+Tagliamonte_dataset <- read_excel("Tagliamonte_dataset.xlsx")
+Tagliamonte_dataset <- as_tibble(Tagliamonte_dataset)
+head(Tagliamonte_dataset)
+```
+
+### Data Preparation for the model:
+```{r}
+Tagliamonte_dataset <- Tagliamonte_dataset %>%
+  mutate(that_omission = ifelse(Dep.var == "T", 0, 1))
+
+# check
+table(Tagliamonte_dataset$that_omission)
+
+Tagliamonte_dataset <- Tagliamonte_dataset %>%
+  mutate(
+    Indiv = factor(Indiv),  # speaker
+
+    Verbs.1 = factor(Verbs.1),
+    Matrix.subj = factor(Matrix.subj), # subject of the main clause
+    Add.elm = factor(Add.elm),   # extra element in the main VP
+    Sub.subj = factor(Sub.subj),  # subject of sub clause
+    Int.mat = factor(Int.mat), # Presence of words between the matrix verb and the subordinate clause
+    Tense = factor(Tense),
+
+    Sex = factor(Sex),
+    Age.3way = factor(Age.3way), # age group
+    Occ = factor(Occ),  
+    # Occ: occupation class
+    # B = blue-collar (manual labour)
+    # S = service jobs
+    # W = white-collar (professional/office work)
+    Edu = factor(Edu)
+  )
+
+```
+The dataset was first *prepared for mixed-effects logistic regression*. The *dependent variable was recoded into a binary numeric outcome*, where 0 indicates that the complementizer is present and 1 indicates that it is omitted, because **logistic regression requires a binary response variable**. A frequency table was used to verify the recoding. Next, *all categorical predictors were converted into factors so that R treats them as categorical* rather than numeric variables. This includes the speaker ID (Indiv), which is needed for the random intercept, the linguistic predictors, and the social predictors. Converting these variables ensures that the model estimates differences between categories correctly.
+
+
+
+### creation of the model (linguistic factors):
+
+**Linguistic model:**
+To test language-internal constraints on that-omission, I fitted a generalized linear mixed-effects model (GLMM) with a binomial family and logit link. The dependent variable is binary (that omitted vs. that present). Fixed effects include the matrix verb category (Verbs.1), matrix subject type (Matrix.subj), the presence/absence of additional elements (Add.elm), complement-clause subject type (Sub.subj), intervening material (Int.mat), and tense (Tense). A random intercept for speaker (1 | Indiv) was included to account for repeated observations per participant and baseline differences in omission rates across individuals.
+
+```{r}
+m_lang <- glmer(
+  that_omission ~ Verbs.1 + Matrix.subj + Add.elm +
+    Sub.subj + Int.mat + Tense +
+    (1 | Indiv),
+  data = Tagliamonte_dataset,
+  family = "binomial"
+)
+
+summary(m_lang)
+
+```
+
+The mixed-effects logistic regression model shows that several language-internal factors significantly influence the probability of that-omission. The **verb** in the **matrix clause** is a *strong predictor*: compared to the baseline level, *think* exhibits a very strong positive effect, and *say* also significantly increases the likelihood of omission, confirming that epistemic verbs favor reduced complementizer use. The **subject** of the matrix clause is equally important: *both non-first-person pronouns and full noun phrases significantly decrease omission*, indicating that first-person subjects (especially I think) strongly favor zero complementizers. **Structural simplicity** also plays a crucial role. Clauses without additional elements significantly increase omission, while the presence of **intervening material** between the matrix verb and the complement clause significantly reduces it, suggesting that structural complexity encourages the use of overt that for clarity. In addition, **pronominal subjects** in the subordinate clause increase omission, likely due to increased processing ease and fluency. **Present tense** further promotes omission, consistent with more immediate and conversational discourse contexts. *The random intercept for speaker shows substantial variation between individuals*, confirming the importance of accounting for participant-level differences. Overall, the findings support both the grammaticalization account — whereby frequent expressions such as I think function as discourse markers — and the structural complexity account, according to which omission is more likely in syntactically simple and fluent environments.
+
+### Coefficients + CI
+```{r}
+m_lang_tidy <- tidy(m_lang, effects="fixed", conf.int=TRUE)
+# The output is a tidy table containing the term (predictor), the estimate (log-odds coefficient),
+# and the confidence interval for each fixed effect.
+
+ggplot(m_lang_tidy,
+       aes(x=reorder(term, estimate), y=estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=conf.low, ymax=conf.high), width=.2) +
+  coord_flip() +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  labs(title="Effects on that-omission", y="Log-odds", x=NULL)
+
+# The plot maps predictors on the y-axis and coefficients on the x-axis, ordering them by effect size
+# using reorder(); the axes are flipped later with coord_flip() for better readability.
+
+
+```
+The dots represent the estimated effects, while the horizontal lines show the 95% confidence intervals. If the interval crosses zero, the effect is not statistically reliable. Effects to the right increase omission, while effects to the left favor overt that.
+
+
+Predicted probabilities:
+```{r}
+plot(ggpredict(m_lang, terms="Verbs.1", bias_correction = TRUE))
+plot(ggpredict(m_lang, terms="Matrix.subj", bias_correction = TRUE))
+plot(ggpredict(m_lang, terms="Int.mat", bias_correction = TRUE))
+# bias_correction = TRUE adjusts predicted probabilities to reduce bias
+# caused by the non-linear logit transformation (Jensen’s inequality),
+# providing more accurate probabilities and confidence intervals.
+
+```
+The predicted probability plots show how likely that-omission is for each **linguistic factor**, expressed as *percentages* rather than log-odds. Each point represents the model’s predicted probability, while the vertical lines indicate the 95% confidence intervals, showing the uncertainty around the estimate.
+
+*Plot 1*: The verb think strongly favors that-omission, followed by say, while know and other verbs show lower probabilities.
+*Plot 2*: First-person singular subjects strongly favor omission, supporting the **grammaticalization hypothesis**.
+--> O = Other noun phrase (NP)
+--> P = Other pronoun
+*Plot 3*: The presence of intervening material significantly reduces the probability of omission, supporting the complexity principle.
+
+### Assessment of model fitness
+```{r}
+#R^2
+# marginal vs conditional R²: fixed effects only vs fixed + random effects.
+r.squaredGLMM(m_lang)
+
+# Plot residuals vs fitted values to check model fit and detect systematic patterns or heteroscedasticity
+plot(fitted(m_lang), resid(m_lang))  
+abline(h = 0, lty = 2)
+
+roc_lang <- roc(Tagliamonte_dataset$that_omission,
+                fitted(m_lang))
+auc(roc_lang)
+```
+The model diagnostics indicate an overall acceptable fit.
+
+The marginal R² (R²m = 0.43) shows how much variation in that-omission is explained by the linguistic predictors alone.
+The conditional R² (R²c = 0.53) includes both predictors and speaker differences, indicating that individual variation contributes additional explanatory power.
+
+The Area Under the Curve (AUC = 0.88) measures how well the model distinguishes between omission and non-omission cases. An AUC of 0.88 shows that the model predicts that-omission very well.. (AUC close to 0.5 = random; closer to 1 = good discrimination.)
+
+The residuals vs. fitted plot shows the expected pattern for a logistic model with a binary outcome. The two bands correspond to the two possible outcomes (omission vs. non-omission). The residuals are evenly distributed and show no systematic pattern, indicating that the model fits the data adequately.
+
+### Creation of the model (social factors):
+
+To evaluate language-external conditioning, I fitted a second GLMM with the same binomial-logit specification and the same random-intercept structure (1 | Indiv). In this model, the fixed effects are social predictors: age group (Age.3way), occupation class (Occ), sex (Sex), and education (Edu). This model estimates whether omission rates differ systematically across social groups while controlling for speaker-level variability in baseline omission.
+
+```{r}
+m_soc <- glmer(
+  that_omission ~ Age.3way + Occ + Sex + Edu +
+    (1 | Indiv),
+  data = Tagliamonte_dataset,
+  family = "binomial"
+)
+
+summary(m_soc)
+```
+The social model shows limited effects. Occupation is the only significant predictor, with white-collar speakers using overt that more frequently. Age shows a non-significant tendency for younger speakers to favor omission, while sex and education do not significantly influence variation.
+
+
+### coefficients + CI:
+```{r}
+m_soc_tidy <- tidy(m_soc, effects="fixed", conf.int=TRUE)
+
+ggplot(m_soc_tidy,
+       aes(x=reorder(term, estimate), y=estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=conf.low, ymax=conf.high), width=.2) +
+  coord_flip() +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  labs(title="Social effects on that-omission", y="Log-odds", x=NULL)
+```
+The coefficient plot displays the estimated effects of the social predictors on that-omission in log-odds. Points to the right of zero indicate an increase in the probability of omission, while points to the left indicate a decrease. Only the white-collar (OccW) shows a clear negative effect, as its confidence interval does not cross zero, suggesting a reliable reduction in the likelihood of omission. All other predictors overlap with zero, indicating that their effects are not statistically reliable. 
+
+
+### Predicted probabilities:
+```{r}
+plot(ggpredict(m_soc, terms="Age.3way", bias_correction = TRUE))
+plot(ggpredict(m_soc, terms="Occ", bias_correction = TRUE))
+plot(ggpredict(m_soc, terms="Sex", bias_correction = TRUE))   
+plot(ggpredict(m_soc, terms="Edu", bias_correction = TRUE))   
+```
+The predicted probability plots show how likely that-omission is for each social group, expressed as *percentages* rather than log-odds. Each point represents the model’s predicted probability, while the vertical lines indicate the 95% confidence intervals, showing the uncertainty around the estimate. Overall, the probabilities are very high across all groups, confirming that omission is the dominant variant in the dataset. **Younger speakers** display the highest predicted probability of omission, while older speakers show slightly lower values, although the confidence intervals overlap, suggesting that these differences are modest. **Occupational groups** show some variation: the “B” group has the highest probability of omission, whereas the “W” group shows lower values, which aligns with the negative coefficient observed in the model. Differences between **males and females** are minimal, with largely overlapping intervals, indicating no reliable gender effect. Similarly, speakers with higher **education** show only a small reduction in omission compared to those with lower education. In sum, the plots illustrate that social factors produce only limited variation, and that that-omission remains highly frequent across all social groups.
+
+
+### Assessment of model fitness
+```{r}
+r.squaredGLMM(m_soc)
+
+plot(fitted(m_soc), resid(m_soc))  
+abline(h = 0, lty = 2)
+
+roc_soc <- roc(Tagliamonte_dataset$that_omission,
+                fitted(m_soc))
+auc(roc_soc)
+```
+The marginal R² values are very low (0.03–0.05), indicating that the social predictors explain only a small portion of the variation in that-omission. The conditional R² (0.06–0.12) shows a slight improvement when speaker variability is included, but the overall explained variance remains limited.
+
+The Area Under the Curve (AUC = 0.68) indicates modest discrimination ability: the model performs better than chance but does not strongly distinguish between omission and non-omission.
+
+The residuals vs. fitted plot shows the expected two-band pattern typical of logistic models with a binary outcome. The points are evenly distributed without systematic curvature, suggesting no major violations of model assumptions. However, the wide spread of residuals and the compressed fitted range reflect the model’s weak explanatory power.
+
+
+
+## Comparison with Tagliamonte’s results
+
+A comparison between the present mixed-effects model and Tagliamonte’s Goldvarb analysis reveals a strong convergence in the **linguistic factors** that condition that-omission.
+
+The most robust effect concerns the lexical verb in the matrix clause. In Tagliamonte’s analysis, think strongly favors omission (FW = 0.72), while say is neutral (0.50). In the present model, both verbs significantly increase the likelihood of omission (think: log-odds = 1.85, p < .001; say: log-odds = 0.93, p < .001). This confirms that cognitive verbs strongly promote omission, and suggests that say may be more favorable than previously observed.
+
+A second major effect involves the matrix subject. Tagliamonte shows that first-person singular subjects favor omission (FW = 0.62), while noun phrases and other pronouns disfavor it. The current model confirms this pattern: non-pronominal subjects (log-odds = −1.38, p < .001) and other pronouns (log-odds = −1.51, p < .001) strongly reduce the probability of omission. This is one of the strongest and most consistent effects across both analyses.
+
+Structural complexity also plays an important role. Tagliamonte reports that the presence of intervening material reduces omission (FW = 0.36 vs. 0.54 when absent). The present model mirrors this result, showing a strong negative effect when intervening material is present (log-odds = −0.95, p < .001). Similarly, the absence of additional elements in the verb phrase favors omission in both analyses.
+
+Verb tense also aligns across studies: Tagliamonte finds present tense slightly favors omission (FW = 0.56), while the present model shows a significant positive effect for present tense (log-odds = 0.76, p < .001).
+
+Overall, the linguistic model replicates Tagliamonte’s core findings while providing effect sizes in log-odds and accounting for speaker variation through random effects.
+
+**Social factors: comparison**
+
+The social factors show weaker and less consistent effects compared to linguistic constraints, a pattern also observed by Tagliamonte.
+
+For age, Tagliamonte reports that younger speakers favor omission (82.6%) compared to older speakers (72.2%). The present model shows the same tendency, with younger speakers displaying higher predicted probabilities, although the effect does not reach statistical significance.
+
+For occupation, Tagliamonte finds that blue-collar speakers favor omission (87.4%) more than white-collar speakers (76.8%). The present model confirms this trend: white-collar speakers show a significant reduction in omission (log-odds = -0.77, p = .0098), while the difference involving other occupational groups remains less clear.
+
+By contrast, sex and education show minimal influence in both analyses. Tagliamonte reports nearly identical rates for men and women, and only small differences by education level. The present model likewise finds no significant effects for sex or education, suggesting that these variables play a minor role in conditioning that-omission.
+
+
+## Conclusion
+
+The results allow us to reject the **null hypothesis** for linguistic predictors and speaker variation, while *the null hypothesis for social factors is only partially rejected*, as occupation shows a significant effect but other social variables do not.

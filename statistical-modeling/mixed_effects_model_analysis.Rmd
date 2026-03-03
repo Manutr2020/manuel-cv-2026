@@ -1,0 +1,112 @@
+---
+title: 'Week 5: home assignment'
+author: "Manuel Trombetta"
+date: "2026-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(error = TRUE)
+```
+
+### Mixed-Effects Analysis of Visual Lexical Decision Times
+
+
+# Task A - **Load Packages and dataset:**
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(MuMIn)
+library(tidyr)
+library(broom)
+library(ggeffects)
+library(languageR)
+```
+
+look at the data:
+
+```{r}
+data <- lexdec 
+head(data)
+```
+
+# Task B - **Filter the data:**
+```{r}
+data <- as_tibble(data) %>%
+  filter(RT < 7, Correct == "correct") 
+
+# count rows:
+nrow(data)
+```
+
+# Task C - **Creation of the mixed linear regression model:**
+```{r}
+data_lmer <- lmer(RT ~ Trial + Length +
+                    (1|Subject) + # random intercept
+                    (1|Word),
+                  data = data,
+                  REML = FALSE)
+summary(data_lmer)
+```
+
+We include random intercepts for Subject and Word because the data contain repeated measurements: *each subject responds to many words and each word is seen by many subjects*. Participants differ in their overall speed, and words differ in their difficulty.
+
+Looking at the variance components, the variance for Subject (0.0177) is close to the residual variance (0.0225), indicating **substantial differences in baseline reaction times across participants**. In contrast, the variance for Word (0.0034) is much smaller relative to the residual variance, suggesting that variability across lexical items is present but less pronounced.
+
+# Task D - **Significance testing of predictors**
+```{r}
+# model with no Trial:
+model_noTrial <- lmer(RT ~ Length +
+                        (1|Subject) + (1|Word),
+                      data = data,
+                      REML = FALSE)
+
+anova(model_noTrial, data_lmer)
+
+# model with no Length:
+model_noLength <- lmer(RT ~ Trial +
+                         (1|Subject) + (1|Word),
+                       data = data,
+                       REML = FALSE)
+
+anova(model_noLength, data_lmer)
+```
+The **chi-square statistic** indicates how much the model improves when a predictor is added, the **degrees of freedom** represent the number of added parameters, and the **p-value** shows whether this improvement is statistically significant.
+
+Adding Trial significantly improves the model (Chisq = 5.03, df = 1, p = .025), showing that reaction times change during the experiment. Adding Length improves the model even more (Chisq = 19.04, df = 1, p < .001), indicating that longer words lead to longer reaction times. Both null hypotheses are rejected.
+
+
+# Task E - **Subject variation in reaction time across Trials**
+
+Add random slope:
+```{r}
+data_lmer2 <- lmer(RT ~ Trial + Length +
+                    (1 + Trial|Subject) + # random slope
+                    (1|Word),
+                  data = data,
+                  REML = FALSE)
+summary(data_lmer2)
+```
+Create predictions for Subject:
+```{r}
+mymodel_pred <- predict_response(
+  data_lmer2,
+  terms = c("Trial", "Subject"),
+  type = "random")
+
+```
+
+Create the plot:
+```{r}
+plot(mymodel_pred, show_ci = FALSE) +
+  scale_color_manual(values = rainbow(21))
+
+```
+
+**Interpretation**:
+
+Most subjects show decreasing predicted reaction times across trials, suggesting a practice effect. A few participants display flatter or slightly increasing trends, indicating individual variability and possible fatigue.

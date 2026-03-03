@@ -1,0 +1,145 @@
+---
+title: 'Week 4: home assignment'
+author: "Manuel Trombetta"
+date: "2026-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(error = FALSE)
+```
+
+### Load libraries
+
+```{r}
+library(tidyverse)
+library(broom)
+library(car)
+library(languageR)
+```
+
+### Load data from "languageR" library
+
+```{r}
+data("dative")
+head(dative)
+```
+
+### Formulating null hypotheses
+
+- **H0~1~ (Animacy)**  
+  *The animacy of the recipient does not affect the choice between PP and NP.*
+
+- **H0~2~ (Length)**  
+  *The length of the recipient does not affect the choice between PP and NP.*
+  
+### Creation of the logistic model
+
+First, the dataset was loaded and the response variable (RealizationOfRecipient) was converted into a factor. 
+In R, a factor is used to represent categorical variables; in this case, the response has two possible categories (PP and NP). 
+A logistic regression model with a logit link was then fitted, using animacy and length of the recipient as predictors. 
+This model estimates how these factors affect the probability of selecting the PP construction.
+
+
+```{r}
+# using factor on RealizationOfRecipient:
+dative <- dative %>%
+  mutate(RealizationOfRecipient = factor(RealizationOfRecipient))
+
+dative_glm <- glm(RealizationOfRecipient ~ AnimacyOfRec + LengthOfRecipient,
+                  data = dative,
+                  family="binomial")
+
+vif(dative_glm)
+summary(dative_glm)
+tidy(dative_glm)
+```
+### Interpretation of the results
+
+Both predictors show significant effects.  
+Animacy has a positive and significant effect: inanimate recipients are more likely to occur in the PP construction (Estimate = 1.02, SE = 0.15, p < 2.28e-11).  
+Length of the recipient also has a strong positive effect (Estimate = 0.68, SE = 0.04, p < 2e-16), indicating that longer recipients favor the PP construction.
+
+Both null hypotheses are therefore rejected (the p-value is less than 0.05).
+Keeping animacy constant, the probability of the PP construction increases substantially with recipient length.
+
+
+
+### Assessment of the probablity of the *PP category*
+
+```{r}
+intercept <- coef(dative_glm)[[1]]
+slope_length <- coef(dative_glm)[[3]]
+slope_anim <- coef(dative_glm)[[2]]
+
+plogis(intercept + slope_length*5 + slope_anim*0) # 5-word recipient
+plogis(intercept + slope_length*3 + slope_anim*0) # 3-word recipient
+plogis(intercept + slope_length*1 + slope_anim*0) # 1-word recipient
+```
+For a five-word recipient, the model predicts a high probability of the PP construction (about 73%), even when the recipient is animate.As for 3-word recipients and 1-word recipients, the probabilities drop to 41% and 15% respectively.
+
+
+### EXTRA: Visualisation of predicted probabilities
+
+```{r}
+data_anim <- data.frame(
+  LengthOfRecipient = seq(1,6, by=1),
+  AnimacyOfRec = "animate"
+)
+
+data_inanim <- data.frame(
+  LengthOfRecipient = seq(1,6, by=1),
+  AnimacyOfRec = "inanimate"
+)
+
+probabilities_anim <- predict(
+  dative_glm,
+  newdata = data_anim,
+  type = "response"
+)
+
+probabilities_inanim <- predict(
+  dative_glm,
+  newdata = data_inanim,
+  type = "response"
+)
+
+#check
+head(probabilities_anim)
+head(probabilities_inanim)
+```
+```{r}
+# Visualisation of predicted probabilities for animate and inanimate recipients.
+plot(
+  data_anim$LengthOfRecipient,
+  probabilities_anim,
+  type = "l",
+  lwd = 2,
+  col = "red",
+  xlab = "Length of recipient",
+  ylab = "Predicted probability of PP construction",
+  ylim = c(0, 1)
+)
+
+lines(
+  data_inanim$LengthOfRecipient,
+  probabilities_inanim,
+  lwd = 2,
+  col = "blue"
+)
+
+legend(
+  "topleft",
+  legend = c("Animate", "Inanimate"),
+  col = c("red", "blue"),
+  lwd = 2
+)
+```
+
+The curves illustrate the predictions of the logistic regression model, highlighting a positive effect of recipient length and a strong effect of animacy on the choice of the PP construction.
+
+
+source: https://www.r-bloggers.com/2023/10/plotting-a-logistic-regression-in-base-r/
